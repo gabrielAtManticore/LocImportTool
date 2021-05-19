@@ -13,7 +13,7 @@ public class LocalizationTools : MonoBehaviour
 	private const string VERSION = "1.0";
 
 	private const string CORE_PATH = "\\My Games\\CORE\\Saved\\Maps";
-	private const string DEFAULT_FILE_NAME = "LocalizationTexts.lua";
+	private const string DEFAULT_FILE_NAME = "LocaleLibrary.lua";
 	private const string KEY_LAST_SAVED_FOLDER_PATH = "LastFolderPath";
 	private const string KEY_LAST_SAVED_FILE_NAME = "LastFileName";
 	private const string KEY_COLUMNS_TO_IGNORE = "ColumnsToIgnore";
@@ -137,12 +137,12 @@ public class LocalizationTools : MonoBehaviour
 		PlayerPrefs.SetString(KEY_COLUMNS_TO_IGNORE, inputColumnsToIgnore);
 		PlayerPrefs.SetInt(KEY_REVEAL_IN_EXPLORER, revealInExplorer ? 1 : 0);
 
+		string languageCodes = string.Join(",", locData.languages);
+		Log("Saving texts for languages: " + languageCodes);
+		Log("Primary: " + path);
+
 		// Save file
 		SaveToFile(locData, path);
-
-		string languageCodes = string.Join(",", locData.languages);
-		Log("Saved texts for languages: " + languageCodes);
-		Log("Location: " + path);
 
 		// Reveal folder in explorer
 #if UNITY_STANDALONE_WIN
@@ -282,16 +282,74 @@ public class LocalizationTools : MonoBehaviour
 
 	private void SaveToFile(LocData data, string filePath)
 	{
+		// Write primary library file
 		StreamWriter writer = new StreamWriter(filePath, false);
+		writer.WriteLine("-- Last generated on " + System.DateTime.Now.ToString());
+		writer.Write(
+@"
+local LIBRARY = {}
 
-		writer.WriteLine("local TEXTS = {}");
+local FILES = {}
+local INDEX_TABLE = {}
+
+LIBRARY.GetTextsForLocale = function (key)
+	if FILES[key] then
+		return require(FILES[key])
+	end
+	error('Missing locale library asset for ' .. key .. '. Try adding asset `LocaleLibrary' .. key .. '` as a custom property to the `LocaleLibrary` script in project content.')
+	return nil
+end
+
+LIBRARY.GetLocaleIndex = function (key)
+    return INDEX_TABLE[key] or 1
+end
+
+LIBRARY.GetLocaleKey = function (index)
+    return INDEX_TABLE[index]
+end
+");
+		writer.WriteLine("");
+		for (int i = 0; i < data.languages.Count; i++)
+		{
+			string languageId = data.languages[i];
+			writer.WriteLine("FILES[\"" + languageId + "\"] = script:GetCustomProperty(\"LocaleLibrary" + languageId + "\")");
+		}
+
+		writer.WriteLine("");
+		for (int i = 0; i < data.languages.Count; i++)
+		{
+			string languageId = data.languages[i];
+			writer.WriteLine("INDEX_TABLE[" + (i + 1) + "] = " + "\"" + languageId + "\"; INDEX_TABLE[\"" + languageId + "\"] = " + (i + 1));
+		}
+
+		writer.WriteLine("");
+		writer.WriteLine("return LIBRARY");
+		writer.Close();
+
+		// Write the individual files, one per language
+		int lastIndexOf = filePath.LastIndexOf('.');
+		string extension = "";
+		string pathSansExtension = filePath;
+		if (lastIndexOf > 0)
+		{
+			extension = filePath.Substring(lastIndexOf);
+			pathSansExtension = filePath.Substring(0, lastIndexOf);
+		}
 
 		for (int i = 0; i < data.languages.Count; i++)
 		{
 			string languageId = data.languages[i];
+
+			string languageFilePath = pathSansExtension + languageId + extension;
+			Log(languageId + ": " + languageFilePath);
+
+			writer = new StreamWriter(languageFilePath, false);
+
+			writer.WriteLine("-- Last generated on " + System.DateTime.Now.ToString());
 			writer.WriteLine("");
-			writer.WriteLine("-- " + CodeToLanguageName(languageId));
-			writer.WriteLine("TEXTS[\"" + languageId + "\"] = {");
+			writer.WriteLine("-- " + CodeToLanguageName(languageId) + " (" + languageId + ")");
+			writer.WriteLine("TEXTS = {");
+			writer.WriteLine("");
 
 			List<string> texts = data.texts[languageId];
 			string lastTID = null;
@@ -333,11 +391,10 @@ public class LocalizationTools : MonoBehaviour
 			}
 
 			writer.WriteLine("}");
+			writer.WriteLine("");
+			writer.WriteLine("return TEXTS");
+			writer.Close();
 		}
-
-		writer.WriteLine("");
-		writer.WriteLine("return TEXTS");
-		writer.Close();
 	}
 
 	private List<int> ParseColumnsToIgnore(string columnsToIgnoreStr)
