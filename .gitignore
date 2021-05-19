@@ -1,3 +1,7 @@
 
 Library/*
 Temp/*
+.vs/*
+Assembly-CSharp.csproj
+LocImportTool.sln
+SimpleFileBrowser.Runtime.csproj
