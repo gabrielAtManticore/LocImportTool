@@ -386,7 +386,7 @@ end
 				{
 					blankEntries++;
 				}
-				writer.WriteLine(tid + " = \"" + str + "\"");
+				writer.WriteLine(tid + " = \"" + str + "\",");
 			}
 
 			if (blankEntries > 0)
