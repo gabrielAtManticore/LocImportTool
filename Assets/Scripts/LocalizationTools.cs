@@ -21,7 +21,7 @@ public class LocalizationTools : MonoBehaviour
 
 	private LocData locData;
 
-	private string inputColumnsToIgnore = "c, d";
+	private string inputColumnsToIgnore = "b, c";
 	private bool revealInExplorer = true;
 	private Vector2 logScrollPosition;
 	private GUIStyle warningStyle = new GUIStyle();
@@ -195,6 +195,10 @@ public class LocalizationTools : MonoBehaviour
 			if (line == "\r")
 			{
 				line = "";
+			}
+			else if (i > 0 && !line.StartsWith("tid_") )
+			{
+				continue;
 			}
 			else if (line.EndsWith("\r"))
 			{
