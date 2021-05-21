@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
-using UnityEditor;
 using UnityEngine;
 
 using SimpleFileBrowser;
@@ -102,22 +100,23 @@ public class LocalizationTools : MonoBehaviour
 		}
 
 		y += 50;
+		int boxWidth = 840;
 		int lineDistance = 18;
-		GUI.Box(new Rect(20, y, 620, 300), "");
-		logScrollPosition = GUI.BeginScrollView(new Rect(20, y, 620, 300), logScrollPosition, new Rect(0, 0, 600, logMessages.Count * lineDistance));
+		GUI.Box(new Rect(20, y, boxWidth, 300), "");
+		logScrollPosition = GUI.BeginScrollView(new Rect(20, y, boxWidth, 300), logScrollPosition, new Rect(0, 0, boxWidth - 20, logMessages.Count * lineDistance));
 		
 		for (int i = 0; i < logMessages.Count; i++)
 		{
 			if (logTypes[i] == LogType.Normal)
 			{
-				GUI.Label(new Rect(5, 2 + i * lineDistance, 600, 22), logMessages[i]);
+				GUI.Label(new Rect(5, 2 + i * lineDistance, boxWidth, 22), logMessages[i]);
 			}
 			else if (logTypes[i] == LogType.Warning)
 			{
-				GUI.Label(new Rect(5, 2 + i * lineDistance, 600, 22), logMessages[i], warningStyle);
+				GUI.Label(new Rect(5, 2 + i * lineDistance, boxWidth, 22), logMessages[i], warningStyle);
 			}
 			else {
-				GUI.Label(new Rect(5, 2 + i * lineDistance, 600, 22), logMessages[i], errorStyle);
+				GUI.Label(new Rect(5, 2 + i * lineDistance, boxWidth, 22), logMessages[i], errorStyle);
 			}
 		}
 		GUI.EndScrollView();
@@ -177,6 +176,10 @@ public class LocalizationTools : MonoBehaviour
 			LogError("Clipboard is empty.");
 			return null;
 		}
+
+		// Sanitize special symbols
+		strFromClipboard = strFromClipboard.Replace("\"", "\\\"");
+
 		string[] lines = strFromClipboard.Split(new char[] { '\n' });
 		if (lines.Length < 3)
 		{
@@ -185,7 +188,7 @@ public class LocalizationTools : MonoBehaviour
 		}
 
 		List<int> columnsToIgnore = ParseColumnsToIgnore(columnsToIgnoreStr);
-
+		
 		// Convert clipboard text into columns of text
 		List<List<string>> columns = new List<List<string>>();
 		int columnCount = 0;
@@ -291,32 +294,51 @@ public class LocalizationTools : MonoBehaviour
 		writer.WriteLine("-- Last generated on " + System.DateTime.Now.ToString());
 		writer.Write(
 @"
+--[[
+	API:
+	GetTextsForLocale(string key) returns table
+	GetLocaleIndex(string key) returns number
+	GetLocaleKey(number index) returns string
+	HasLocale(string key) returns boolean
+--]]
 local LIBRARY = {}
 
 local FILES = {}
 local INDEX_TABLE = {}
+local TEXT_TABLES = {}
 
 LIBRARY.GetTextsForLocale = function (key)
-	if FILES[key] then
-		return require(FILES[key])
+	if TEXT_TABLES[key] then
+		return TEXT_TABLES[key]
 	end
-	error('Missing locale library asset for ' .. key .. '. Try adding asset `LocaleLibrary' .. key .. '` as a custom property to the `LocaleLibrary` script in project content.')
+	if FILES[key] then
+		TEXT_TABLES[key] = require(FILES[key])
+		return TEXT_TABLES[key]
+	end
+	error('Missing locale library asset for ' .. key .. '. Try adding asset `LocaleLibrary_' .. key .. '` as a custom property to the `LocaleLibrary` script in project content.')
 	return nil
 end
 
 LIBRARY.GetLocaleIndex = function (key)
-    return INDEX_TABLE[key] or 1
+	return INDEX_TABLE[key] or 1
 end
 
 LIBRARY.GetLocaleKey = function (index)
-    return INDEX_TABLE[index]
+	return INDEX_TABLE[index]
+end
+
+LIBRARY.HasLocale = function (key)
+	if FILES[key] then
+		return true
+	end
+	return false
 end
 ");
 		writer.WriteLine("");
 		for (int i = 0; i < data.languages.Count; i++)
 		{
 			string languageId = data.languages[i];
-			writer.WriteLine("FILES[\"" + languageId + "\"] = script:GetCustomProperty(\"LocaleLibrary" + languageId + "\")");
+			writer.WriteLine("FILES[\"" + languageId + "\"] = script:GetCustomProperty(\"LocaleLibrary_" + languageId + "\")");
 		}
 
 		writer.WriteLine("");
@@ -344,7 +366,7 @@ end
 		{
 			string languageId = data.languages[i];
 
-			string languageFilePath = pathSansExtension + languageId + extension;
+			string languageFilePath = pathSansExtension + "_" + languageId + extension;
 			Log(languageId + ": " + languageFilePath);
 
 			writer = new StreamWriter(languageFilePath, false);
@@ -364,6 +386,10 @@ end
 
 				if (string.IsNullOrEmpty(tid)) continue;
 
+				string str = texts[t];
+
+				if (str.StartsWith("<disable")) continue;
+
 				// Add blank space to improve readability
 				if (lastTID != null)
 				{
@@ -381,7 +407,6 @@ end
 				lastTID = tid;
 
 				// Write the text
-				string str = texts[t];
 				if (str.Length == 0)
 				{
 					blankEntries++;
