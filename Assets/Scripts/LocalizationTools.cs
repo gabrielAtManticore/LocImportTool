@@ -8,7 +8,7 @@ using SimpleFileBrowser;
 
 public class LocalizationTools : MonoBehaviour
 {
-	private const string VERSION = "1.1";
+	private const string VERSION = "1.2";
 
 	private const string CORE_PATH = "\\My Games\\CORE\\Saved\\Maps";
 	private const string DEFAULT_FILE_NAME = "LocaleLibrary.lua";
@@ -16,11 +16,13 @@ public class LocalizationTools : MonoBehaviour
 	private const string KEY_LAST_SAVED_FILE_NAME = "LastFileName";
 	private const string KEY_COLUMNS_TO_IGNORE = "ColumnsToIgnore";
 	private const string KEY_REVEAL_IN_EXPLORER = "RevealInExplorer";
+	private const string KEY_GENERATE_PBT_FILES = "GeneratePBTs";
 
 	private LocData locData;
 
 	private string inputColumnsToIgnore = "b, c";
 	private bool revealInExplorer = true;
+	private bool generatePBTs = true;
 	private Vector2 logScrollPosition;
 	private GUIStyle warningStyle = new GUIStyle();
 	private GUIStyle errorStyle = new GUIStyle();
@@ -40,6 +42,7 @@ public class LocalizationTools : MonoBehaviour
 	{
 		inputColumnsToIgnore = PlayerPrefs.GetString(KEY_COLUMNS_TO_IGNORE, inputColumnsToIgnore);
 		revealInExplorer = (PlayerPrefs.GetInt(KEY_REVEAL_IN_EXPLORER, revealInExplorer ? 1 : 0) == 1) ? true : false;
+		generatePBTs = (PlayerPrefs.GetInt(KEY_GENERATE_PBT_FILES, generatePBTs ? 1 : 0) == 1) ? true : false;
 
 		warningStyle.normal.textColor = Color.yellow;
 		errorStyle.normal.textColor = Color.red;
@@ -74,6 +77,9 @@ public class LocalizationTools : MonoBehaviour
 
 		y += 30;
 		revealInExplorer = GUI.Toggle(new Rect(19, y, 200, 30), revealInExplorer, " Reveal in explorer when done");
+
+		y += 20;
+		generatePBTs = GUI.Toggle(new Rect(19, y, 200, 30), generatePBTs, " Generate .pbt files");
 
 		y += 40;
 		if (GUI.Button(new Rect(19, y, 201, 30), "Import from clipboard"))
@@ -135,6 +141,7 @@ public class LocalizationTools : MonoBehaviour
 		PlayerPrefs.SetString(KEY_LAST_SAVED_FILE_NAME, fileName);
 		PlayerPrefs.SetString(KEY_COLUMNS_TO_IGNORE, inputColumnsToIgnore);
 		PlayerPrefs.SetInt(KEY_REVEAL_IN_EXPLORER, revealInExplorer ? 1 : 0);
+		PlayerPrefs.SetInt(KEY_GENERATE_PBT_FILES, generatePBTs ? 1 : 0);
 
 		string languageCodes = string.Join(",", locData.languages);
 		Log("Saving texts for languages: " + languageCodes);
@@ -352,7 +359,7 @@ end
 		writer.WriteLine("return LIBRARY");
 		writer.Close();
 
-		// Write the individual files, one per language
+		// Break apart the path and extension
 		int lastIndexOf = filePath.LastIndexOf('.');
 		string extension = "";
 		string pathSansExtension = filePath;
@@ -362,6 +369,10 @@ end
 			pathSansExtension = filePath.Substring(0, lastIndexOf);
 		}
 
+		// Accompanying .pbt for the main Library file
+		WritePBT(pathSansExtension);
+
+		// Write the individual files, one per language
 		for (int i = 0; i < data.languages.Count; i++)
 		{
 			string languageId = data.languages[i];
@@ -423,8 +434,53 @@ end
 			writer.WriteLine("");
 			writer.WriteLine("return TEXTS");
 			writer.Close();
+
+			// Accompanying .pbt for the individual language file
+			WritePBT(pathSansExtension + "_" + languageId);
 		}
 	}
+
+	private void WritePBT(string pathSansExtension)
+	{
+		if ( !generatePBTs ) return;
+
+		string languageFilePath = pathSansExtension + ".pbt";
+		if ( !System.IO.File.Exists(languageFilePath) )
+		{
+			int indexOfLastSlash = pathSansExtension.LastIndexOf('\\');
+			string fileName = pathSansExtension.Substring(indexOfLastSlash + 1);
+			
+			ulong muid = GenerateMUID();
+
+			StreamWriter writer = new StreamWriter(languageFilePath, false);
+			writer.Write(
+@"
+Assets {
+  Id: " + muid + @"
+  Name: " + '\"' + fileName + '\"' + @"
+  PlatformAssetType: 3
+  TextAsset {
+  }
+  SerializationVersion: 85
+}");
+			writer.Close();
+		}
+	}
+
+	private ulong GenerateMUID()
+	{
+		System.Random rng = new System.Random();
+		byte[] buf = new byte[8];
+		rng.NextBytes(buf);
+		ulong muid = BitConverter.ToUInt64(buf, 0);
+		while (existingMUIDs.Contains(muid))
+		{
+			muid++;
+		}
+		existingMUIDs.Add(muid);
+		return muid;
+	}
+	private HashSet<ulong> existingMUIDs = new HashSet<ulong>();
 
 	private List<int> ParseColumnsToIgnore(string columnsToIgnoreStr)
 	{
